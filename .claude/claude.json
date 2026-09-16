@@ -1,0 +1,14 @@
+{
+  "defaultMode": "plan",
+  "permissions": {
+    "allow": [
+      "Read(**)",
+      "Write", 
+      "Edit"
+    ],
+    "deny": [
+      "Bash",
+      "WebFetch"
+    ]
+  }
+}

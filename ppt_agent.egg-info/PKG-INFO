@@ -1,3 +1,18 @@
+Metadata-Version: 2.4
+Name: ppt-agent
+Version: 0.1.0
+Summary: Console agent that generates and edits PowerPoint presentations via a pluggable LLM backend.
+Requires-Python: >=3.10
+Description-Content-Type: text/markdown
+Requires-Dist: python-pptx>=0.6.23
+Requires-Dist: python-docx>=1.1.0
+Requires-Dist: pypdf>=4.0.0
+Requires-Dist: openai>=1.30.0
+Provides-Extra: anthropic
+Requires-Dist: anthropic>=0.34.0; extra == "anthropic"
+Provides-Extra: dev
+Requires-Dist: pytest>=8.0.0; extra == "dev"
+
 # agent_reporting_expert
 
 A console agent specialized in report/presentation generation. It talks to
