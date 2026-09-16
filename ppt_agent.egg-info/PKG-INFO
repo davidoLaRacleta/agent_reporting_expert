@@ -1,3 +1,21 @@
+Metadata-Version: 2.4
+Name: ppt-agent
+Version: 0.1.0
+Summary: Console agent that generates and edits PowerPoint presentations via a pluggable LLM backend.
+Requires-Python: >=3.10
+Description-Content-Type: text/markdown
+Requires-Dist: python-pptx>=0.6.23
+Requires-Dist: python-docx>=1.1.0
+Requires-Dist: pypdf>=4.0.0
+Requires-Dist: rich>=13.7.0
+Requires-Dist: langgraph>=0.6.0
+Requires-Dist: langchain-core>=0.3.0
+Requires-Dist: langchain-openai>=0.2.0
+Provides-Extra: anthropic
+Requires-Dist: langchain-anthropic>=0.2.0; extra == "anthropic"
+Provides-Extra: dev
+Requires-Dist: pytest>=8.0.0; extra == "dev"
+
 # agent_reporting_expert
 
 A console agent specialized in report/presentation generation. It talks to
@@ -7,11 +25,9 @@ shapes, images, native editable charts, and tables. It can also ingest
 your own reference documents (`.txt`, `.md`, `.docx`, `.pdf`) so slide
 content is grounded in real material instead of invented from scratch.
 
-The agentic loop is built on [LangGraph](https://github.com/langchain-ai/langgraph)
-(a prebuilt ReAct tool-calling agent with conversation memory). The LLM
-backend is pluggable through LangChain's chat model interface: point it at
-a local model server (Ollama, LM Studio, or anything else that speaks the
-OpenAI chat-completions API) or at the hosted Anthropic Claude API.
+The LLM backend is pluggable: point it at a local model server (Ollama,
+LM Studio, or anything else that speaks the OpenAI chat-completions API)
+or at the hosted Anthropic Claude API.
 
 ## Project layout
 
@@ -19,12 +35,11 @@ OpenAI chat-completions API) or at the hosted Anthropic Claude API.
 ppt_agent/
   cli.py            Interactive console (REPL) entry point
   config.py         AgentConfig: env-var-driven settings
-  llm/              Builds the LangChain chat model for the configured backend
-  agent/            ReportingAgent: a LangGraph create_react_agent wrapper + system prompt
-  tools/            PowerPoint operations exposed to the LLM as LangChain StructuredTools
+  llm/              Pluggable LLM connectors (base interface + backends)
+  agent/            The conversation <-> tool-call loop and system prompt
+  tools/            PowerPoint operations exposed to the LLM as tools
   presentation/     Stateful wrapper around the open python-pptx document
   context/          Document ingestion (txt/md/docx/pdf) + keyword search
-  ui/               Rich-based console rendering (banner, transcript, tables, completion)
 tests/              Unit tests for the non-LLM logic
 ```
 

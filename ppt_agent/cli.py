@@ -19,9 +19,9 @@ from ppt_agent.agent.core import ReportingAgent
 from ppt_agent.config import AgentConfig
 from ppt_agent.context.store import ContextStore
 from ppt_agent.exceptions import PptAgentError
-from ppt_agent.llm.factory import build_llm_client
+from ppt_agent.llm.factory import build_chat_model
 from ppt_agent.presentation.manager import PresentationManager
-from ppt_agent.tools import build_default_registry
+from ppt_agent.tools import build_default_tools
 from ppt_agent.ui import ConsoleUI
 from ppt_agent.ui.completion import enable_slash_command_completion
 
@@ -84,18 +84,18 @@ def main(argv: list[str] | None = None) -> int:
     ui = ConsoleUI()
 
     try:
-        llm_client = build_llm_client(config)
+        chat_model = build_chat_model(config)
     except PptAgentError as exc:
         ui.error(f"Failed to initialize LLM backend: {exc}")
         return 1
 
     presentation_manager = PresentationManager()
     context_store = ContextStore()
-    tool_registry = build_default_registry(presentation_manager, context_store)
+    tools = build_default_tools(presentation_manager, context_store)
 
     agent = ReportingAgent(
-        llm_client=llm_client,
-        tool_registry=tool_registry,
+        chat_model=chat_model,
+        tools=tools,
         max_tool_iterations=config.max_tool_iterations,
         on_tool_call=ui.tool_call,
         on_tool_result=ui.tool_result,

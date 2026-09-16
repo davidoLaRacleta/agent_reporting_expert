@@ -1,35 +1,58 @@
+"""Tests for ReportingAgent, using a scripted fake chat model.
+
+No network/model server is involved: ``FakeToolCallingChatModel`` is a
+minimal ``BaseChatModel`` that replays a fixed sequence of ``AIMessage``
+replies (including ones with ``tool_calls``), which is enough to exercise
+the full LangGraph tool-calling loop deterministically.
+"""
+
+from langchain_core.language_models.chat_models import BaseChatModel
+from langchain_core.messages import AIMessage
+from langchain_core.outputs import ChatGeneration, ChatResult
+from langchain_core.tools import tool
+from pydantic import Field
+
 from ppt_agent.agent.core import ReportingAgent
-from ppt_agent.llm.base import ChatMessage, LLMClient, ToolCall
-from ppt_agent.tools.registry import ToolRegistry
 
 
-class ScriptedLLMClient(LLMClient):
-    """Replays a fixed sequence of assistant replies, for testing the agent
-    loop without a real model. Each call to chat() returns the next reply."""
+class FakeToolCallingChatModel(BaseChatModel):
+    """Replays scripted ``AIMessage`` replies instead of calling a real model."""
 
-    def __init__(self, replies):
-        self._replies = list(replies)
+    responses: list[AIMessage] = Field(default_factory=list)
+    call_count: int = 0
 
-    def chat(self, messages, tools):
-        return self._replies.pop(0)
+    def bind_tools(self, tools, **kwargs):
+        return self
+
+    def _generate(self, messages, stop=None, run_manager=None, **kwargs) -> ChatResult:
+        message = self.responses[self.call_count]
+        self.call_count += 1
+        return ChatResult(generations=[ChatGeneration(message=message)])
+
+    @property
+    def _llm_type(self) -> str:
+        return "fake-tool-calling-chat-model"
 
 
-def build_registry_with_echo_tool():
-    registry = ToolRegistry()
-    registry.add(
-        name="echo",
-        description="Echo back the given text.",
-        parameters={"type": "object", "properties": {"text": {"type": "string"}}},
-        handler=lambda text: f"echoed: {text}",
-    )
-    return registry
+@tool
+def echo(text: str) -> str:
+    """Echo back the given text."""
+    return f"echoed: {text}"
+
+
+@tool
+def boom() -> str:
+    """A tool that always raises, to exercise error handling."""
+    raise ValueError("kaboom")
+
+
+def _tool_call(name: str, args: dict, call_id: str) -> dict:
+    return {"name": name, "args": args, "id": call_id, "type": "tool_call"}
 
 
 def test_agent_returns_plain_text_when_no_tool_calls_requested():
-    llm_client = ScriptedLLMClient(
-        [ChatMessage(role="assistant", content="Hello there!")]
-    )
-    agent = ReportingAgent(llm_client, ToolRegistry())
+    model = FakeToolCallingChatModel(responses=[AIMessage(content="Hello there!")])
+    agent = ReportingAgent(model, [echo])
 
     reply = agent.send_user_message("hi")
 
@@ -37,63 +60,63 @@ def test_agent_returns_plain_text_when_no_tool_calls_requested():
 
 
 def test_agent_executes_tool_call_then_returns_final_reply():
-    tool_call = ToolCall(id="call_1", name="echo", arguments={"text": "hi"})
-    llm_client = ScriptedLLMClient(
-        [
-            ChatMessage(role="assistant", content="", tool_calls=[tool_call]),
-            ChatMessage(role="assistant", content="Done."),
+    model = FakeToolCallingChatModel(
+        responses=[
+            AIMessage(content="", tool_calls=[_tool_call("echo", {"text": "hi"}, "call_1")]),
+            AIMessage(content="Done."),
         ]
     )
-    agent = ReportingAgent(llm_client, build_registry_with_echo_tool())
+    tool_calls_seen = []
+    tool_results_seen = []
+    agent = ReportingAgent(
+        model,
+        [echo],
+        on_tool_call=lambda name, args: tool_calls_seen.append((name, args)),
+        on_tool_result=lambda name, result: tool_results_seen.append((name, result)),
+    )
 
     reply = agent.send_user_message("please echo hi")
 
     assert reply == "Done."
-    tool_result_messages = [m for m in agent.history if m.role == "tool"]
-    assert tool_result_messages[0].content == "echoed: hi"
-    assert tool_result_messages[0].tool_call_id == "call_1"
+    assert tool_calls_seen == [("echo", {"text": "hi"})]
+    assert tool_results_seen == [("echo", "echoed: hi")]
 
 
-def test_agent_stops_after_max_tool_iterations():
-    tool_call = ToolCall(id="call_1", name="echo", arguments={"text": "loop"})
-    infinite_tool_calls = ChatMessage(
-        role="assistant", content="", tool_calls=[tool_call]
+def test_tool_exception_is_reported_and_fed_back_to_the_model():
+    model = FakeToolCallingChatModel(
+        responses=[
+            AIMessage(content="", tool_calls=[_tool_call("boom", {}, "call_1")]),
+            AIMessage(content="Handled the error."),
+        ]
     )
-    llm_client = ScriptedLLMClient([infinite_tool_calls] * 3)
-    agent = ReportingAgent(
-        llm_client, build_registry_with_echo_tool(), max_tool_iterations=3
-    )
+    tool_results_seen = []
+    agent = ReportingAgent(model, [boom], on_tool_result=lambda name, result: tool_results_seen.append(result))
+
+    reply = agent.send_user_message("please break")
+
+    assert reply == "Handled the error."
+    assert len(tool_results_seen) == 1
+    assert "kaboom" in tool_results_seen[0]
+
+
+def test_agent_reports_safety_limit_instead_of_looping_forever():
+    infinite_tool_calls = [
+        AIMessage(content="", tool_calls=[_tool_call("echo", {"text": "loop"}, f"call_{i}")]) for i in range(10)
+    ]
+    model = FakeToolCallingChatModel(responses=infinite_tool_calls)
+    agent = ReportingAgent(model, [echo], max_tool_iterations=2)
 
     reply = agent.send_user_message("loop forever")
 
     assert "iteration safety limit" in reply
 
 
-def test_reset_clears_history_but_keeps_system_prompt():
-    llm_client = ScriptedLLMClient([ChatMessage(role="assistant", content="ok")])
-    agent = ReportingAgent(llm_client, ToolRegistry(), system_prompt="SYSTEM")
-    agent.send_user_message("hi")
+def test_reset_starts_a_new_conversation_thread():
+    model = FakeToolCallingChatModel(responses=[AIMessage(content="first"), AIMessage(content="second")])
+    agent = ReportingAgent(model, [echo])
+    first_thread_id = agent._thread_id
 
+    agent.send_user_message("hi")
     agent.reset()
 
-    assert len(agent.history) == 1
-    assert agent.history[0].role == "system"
-    assert agent.history[0].content == "SYSTEM"
-
-
-def test_tool_registry_dispatch_reports_unknown_tool():
-    registry = ToolRegistry()
-    result = registry.dispatch("does_not_exist", {})
-    assert "unknown tool" in result
-
-
-def test_tool_registry_dispatch_catches_handler_exceptions():
-    registry = ToolRegistry()
-    registry.add(
-        name="boom",
-        description="Always fails.",
-        parameters={"type": "object", "properties": {}},
-        handler=lambda: (_ for _ in ()).throw(RuntimeError("kaboom")),
-    )
-    result = registry.dispatch("boom", {})
-    assert "failed unexpectedly" in result
+    assert agent._thread_id != first_thread_id

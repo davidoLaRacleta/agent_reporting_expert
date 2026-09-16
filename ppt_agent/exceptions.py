@@ -12,7 +12,3 @@ class ToolExecutionError(PptAgentError):
     should be phrased as actionable feedback (e.g. what was wrong and what
     the caller could try instead) rather than an internal stack trace.
     """
-
-
-class LlmConnectionError(PptAgentError):
-    """Raised when the configured LLM backend cannot be reached or fails."""

@@ -1,25 +1,25 @@
-"""Concrete PowerPoint operations exposed to the LLM as callable tools.
+"""Concrete PowerPoint operations exposed to the LLM as LangChain tools.
 
 Each ``*_tools.py`` module owns one area of functionality (slides, text,
-shapes, images, charts, tables, context) and registers its tools -- schema
-plus handler -- onto a shared ``ToolRegistry`` via a ``register(...)``
-function. See ``tools.registry`` for the registry itself and
-``build_default_registry`` in this module for how everything is wired
-together.
+shapes, images, charts, tables, context) and exposes a ``build_tools(...)``
+function that returns a list of ``StructuredTool`` instances closed over
+the shared state they operate on (``PresentationManager``/``ContextStore``).
+``build_default_tools`` below wires every module together for the agent.
 """
 
 from __future__ import annotations
 
+from langchain_core.tools import StructuredTool
+
 from ppt_agent.context.store import ContextStore
 from ppt_agent.presentation.manager import PresentationManager
-from ppt_agent.tools.registry import ToolRegistry
 
 
-def build_default_registry(
+def build_default_tools(
     presentation_manager: PresentationManager,
     context_store: ContextStore,
-) -> ToolRegistry:
-    """Create a ``ToolRegistry`` with every built-in tool module registered."""
+) -> list[StructuredTool]:
+    """Build every built-in tool, bound to the given shared state."""
     from ppt_agent.tools import (
         chart_tools,
         context_tools,
@@ -30,12 +30,12 @@ def build_default_registry(
         text_tools,
     )
 
-    registry = ToolRegistry()
-    presentation_tools.register(registry, presentation_manager)
-    text_tools.register(registry, presentation_manager)
-    shape_tools.register(registry, presentation_manager)
-    image_tools.register(registry, presentation_manager)
-    chart_tools.register(registry, presentation_manager)
-    table_tools.register(registry, presentation_manager)
-    context_tools.register(registry, context_store)
-    return registry
+    return [
+        *presentation_tools.build_tools(presentation_manager),
+        *text_tools.build_tools(presentation_manager),
+        *shape_tools.build_tools(presentation_manager),
+        *image_tools.build_tools(presentation_manager),
+        *chart_tools.build_tools(presentation_manager),
+        *table_tools.build_tools(presentation_manager),
+        *context_tools.build_tools(context_store),
+    ]

@@ -40,7 +40,7 @@ class AgentConfig:
     """Safety cap on chained tool calls per user turn, to avoid infinite loops."""
 
     @classmethod
-    def from_env(cls) -> "AgentConfig":
+    def from_env(cls) -> AgentConfig:
         """Build a config from ``PPT_AGENT_*`` environment variables.
 
         Any variable that is unset falls back to the dataclass default.
