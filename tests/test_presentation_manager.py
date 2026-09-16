@@ -18,8 +18,9 @@ def test_add_slide_sets_title_and_becomes_active():
 
     assert index == 0
     slides = manager.list_slides()
+    # "title_and_content" contributes two placeholders: title + body.
     assert slides == [
-        {"index": 0, "title": "Hello", "shape_count": 1, "is_active": True}
+        {"index": 0, "title": "Hello", "shape_count": 2, "is_active": True}
     ]
 
 

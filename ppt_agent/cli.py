@@ -23,6 +23,7 @@ from ppt_agent.llm.factory import build_llm_client
 from ppt_agent.presentation.manager import PresentationManager
 from ppt_agent.tools import build_default_registry
 from ppt_agent.ui import ConsoleUI
+from ppt_agent.ui.completion import enable_slash_command_completion
 
 _COMMAND_ROWS = [
     ("/new [template.pptx]", "Start a new, empty presentation (optionally from a template)"),
@@ -35,6 +36,20 @@ _COMMAND_ROWS = [
     ("/help", "Show this message"),
     ("/exit, /quit", "Exit the agent"),
 ]
+
+# Bare command names (as typed) mapped to a short description, for Tab-completion.
+_COMMAND_NAMES = {
+    "/new": "Start a new, empty presentation",
+    "/open": "Open an existing presentation",
+    "/save": "Save the current presentation",
+    "/slides": "List slides in the current presentation",
+    "/context": "Load a document into context",
+    "/documents": "List documents loaded into context",
+    "/reset": "Clear the conversation history",
+    "/help": "Show available commands",
+    "/exit": "Exit the agent",
+    "/quit": "Exit the agent",
+}
 
 
 def build_arg_parser() -> argparse.ArgumentParser:
@@ -86,6 +101,7 @@ def main(argv: list[str] | None = None) -> int:
         on_tool_result=ui.tool_result,
     )
 
+    enable_slash_command_completion(_COMMAND_NAMES)
     ui.banner(config.llm_provider, config.model)
 
     while True:
